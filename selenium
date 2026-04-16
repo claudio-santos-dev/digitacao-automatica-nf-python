@@ -1,0 +1,277 @@
+import pandas as pd
+import time
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+
+# ==============================
+# CONFIG
+# ==============================
+
+#procurar o caminho certo depois
+
+CAMINHO_PLANILHA = r"C:\Users\Usuario\Desktop\automatizacao\planilha_nf.xlsx"
+
+URL = "..."
+
+USUARIO = "USUARIO_AQUI"
+SENHA = "SUA_SENHA_AQUI"
+
+
+# ==============================
+# FUNÇÕES BASE
+# ==============================
+
+def iniciar_navegador():
+    options = webdriver.ChromeOptions()
+
+    # 🔥 abre "isolado" (tipo aba limpa)
+    options.add_argument("--incognito")
+
+    driver = webdriver.Chrome(options=options)
+    driver.maximize_window()
+    return driver
+
+
+def esperar(driver, tempo=10):
+    return WebDriverWait(driver, tempo)
+
+
+# ==============================
+# LOGIN
+# ==============================
+
+def fazer_login(driver):
+    driver.get(URL)
+
+    print("🔐 Fazendo login...")
+
+    time.sleep(5)
+
+    # ⚠️ ajustar se necessário com F12
+    driver.find_element(By.NAME, "username").send_keys(USUARIO)
+    driver.find_element(By.NAME, "password").send_keys(SENHA)
+    driver.find_element(By.NAME, "password").send_keys(Keys.ENTER)
+
+    time.sleep(5)
+
+
+# ==============================
+# NAVEGAÇÃO
+# ==============================
+
+def abrir_cadastro_nota(driver):
+    print("📂 Acessando Controle Nota Fiscal...")
+
+    wait = esperar(driver)
+
+    # campo de busca lateral
+    busca = wait.until(EC.presence_of_element_located(
+        (By.XPATH, "//input[contains(@placeholder,'Pesquisar')]")
+    ))
+
+    busca.click()
+    busca.clear()
+    busca.send_keys("nota")
+
+    time.sleep(2)
+
+    # clicar no menu correto
+    wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "//*[contains(text(),'Controle Nota Fiscal')]")
+    )).click()
+
+    time.sleep(3)
+
+    # botão cadastrar
+    wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "//*[contains(text(),'Cadastrar')]")
+    )).click()
+
+    time.sleep(5)
+
+
+# ==============================
+# PREENCHIMENTO
+# ==============================
+
+def preencher_dados_nota(driver, or_num, depositante):
+    print(f"🧾 Preenchendo nota {or_num}")
+
+    wait = esperar(driver)
+
+    # campo nota fiscal (por contexto)
+    campo_nf = wait.until(EC.presence_of_element_located(
+        (By.XPATH, "//label[contains(text(),'Nota Fiscal')]/following::input[1]")
+    ))
+
+    campo_nf.send_keys(str(or_num))
+
+    # operação
+    campo_op = driver.find_element(By.XPATH,
+        "//label[contains(text(),'Operação')]/following::input[1]"
+    )
+
+    campo_op.send_keys("5101")
+    time.sleep(2)
+    campo_op.send_keys(Keys.ENTER)
+
+    # depositante em todos
+    campos = ["Depositante", "Emitente", "Destinatário", "Entrega"]
+
+    for campo in campos:
+        el = driver.find_element(By.XPATH,
+            f"//label[contains(text(),'{campo}')]/following::input[1]"
+        )
+        el.send_keys(str(depositante))
+        time.sleep(1)
+
+
+# ==============================
+# ITENS
+# ==============================
+
+def adicionar_item(driver, produto, quantidade):
+    print(f"📦 Produto {produto}")
+
+    wait = esperar(driver)
+
+    # botão adicionar
+    wait.until(EC.element_to_be_clickable(
+        (By.XPATH, "//*[contains(text(),'Adicionar')]")
+    )).click()
+
+    time.sleep(2)
+
+    # produto
+    campo_prod = wait.until(EC.presence_of_element_located(
+        (By.XPATH, "//label[contains(text(),'Produto')]/following::input[1]")
+    ))
+
+    campo_prod.send_keys(str(produto))
+    time.sleep(2)
+    campo_prod.send_keys(Keys.ENTER)
+
+    # quantidade
+    driver.find_element(By.XPATH,
+        "//label[contains(text(),'Quantidade')]/following::input[1]"
+    ).send_keys(str(quantidade))
+
+    # total bruto
+    driver.find_element(By.XPATH,
+        "//label[contains(text(),'Total Bruto')]/following::input[1]"
+    ).send_keys(str(quantidade))
+
+    # embalagem
+    campo_emb = driver.find_element(By.XPATH,
+        "//label[contains(text(),'Embalagem')]/following::input[1]"
+    )
+
+    campo_emb.send_keys("1")
+    time.sleep(2)
+    campo_emb.send_keys(Keys.ENTER)
+
+    time.sleep(2)
+
+    # aba impostos
+    driver.find_element(By.XPATH,
+        "//*[contains(text(),'Impostos')]"
+    ).click()
+
+    time.sleep(2)
+
+    # origem produto
+    driver.find_element(By.XPATH,
+        "//label[contains(text(),'Origem do Produto')]/following::input[1]"
+    ).send_keys("0")
+
+    time.sleep(2)
+
+
+def salvar_item(driver):
+    print("💾 Salvando item...")
+
+    driver.find_element(By.XPATH,
+        "//*[contains(text(),'Salvar')]"
+    ).click()
+
+    time.sleep(3)
+
+
+# ==============================
+# FINALIZAÇÃO
+# ==============================
+
+def validar_nota(driver):
+    print("📊 Validando valores...")
+
+    driver.find_element(By.XPATH,
+        "//*[contains(text(),'Impostos Relativos')]"
+    ).click()
+
+    time.sleep(3)
+
+    # depois a gente automatiza cópia de valores
+
+
+def salvar_nota(driver):
+    print("💾 Salvando nota...")
+
+    driver.find_element(By.XPATH,
+        "//*[contains(text(),'Salvar')]"
+    ).click()
+
+    time.sleep(5)
+
+
+# ==============================
+# EXECUÇÃO
+# ==============================
+
+def executar():
+    df = pd.read_excel(CAMINHO_PLANILHA, sheet_name="NF_DIGITAR")
+
+    df.columns = df.columns.str.strip().str.upper()
+
+    driver = iniciar_navegador()
+    fazer_login(driver)
+
+    ors = df["OR"].unique()
+
+    for or_num in ors:
+
+        print(f"\n🚀 Iniciando OR {or_num}")
+
+        try:
+            dados_or = df[df["OR"] == or_num]
+            depositante = dados_or.iloc[0]["DEPOSITANTE"]
+
+            abrir_cadastro_nota(driver)
+            preencher_dados_nota(driver, or_num, depositante)
+
+            for _, linha in dados_or.iterrows():
+
+                produto = linha["CODIGO DO PRODUTO"]
+                quantidade = linha["QUANTIDADE"]
+
+                adicionar_item(driver, produto, quantidade)
+                salvar_item(driver)  # 🔥 ESSENCIAL
+
+            validar_nota(driver)
+            salvar_nota(driver)
+
+            print(f"✅ OR {or_num} finalizada")
+
+        except Exception as e:
+            print(f"❌ Erro na OR {or_num}: {e}")
+
+    input("Pressione ENTER para fechar...")
+
+
+if __name__ == "__main__":
+    executar()
