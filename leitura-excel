@@ -1,0 +1,81 @@
+import pandas as pd
+import unicodedata
+
+
+def tratar_colunas(df):
+
+    # remover espaços
+    df.columns = df.columns.str.strip()
+
+    # remover acentos
+    df.columns = [
+        unicodedata.normalize("NFKD", col).encode("ASCII", "ignore").decode("ASCII")
+        for col in df.columns
+    ]
+
+    # deixar maiúsculo
+    df.columns = df.columns.str.upper()
+
+    return df
+
+
+def testar_leitura():
+
+    try:
+        df = pd.read_excel(
+            r"C:\Users\Usuario\Desktop\automatizacao\planilha_nf.xlsx",
+            sheet_name="NF_DIGITAR"
+        )
+
+        print("\n✅ Planilha carregada com sucesso!\n")
+
+    except Exception as e:
+        print("\n❌ Erro ao ler a planilha:")
+        print(e)
+        return
+
+    # tratar colunas
+    df = tratar_colunas(df)
+
+    print("📌 Colunas tratadas:")
+    print(df.columns)
+
+    print("\n" + "="*50)
+
+    # validar colunas obrigatórias
+    colunas_necessarias = ["OR", "DEPOSITANTE", "CODIGO DO PRODUTO", "QUANTIDADE"]
+
+    for col in colunas_necessarias:
+        if col not in df.columns:
+            print(f"\n❌ Coluna obrigatória não encontrada: {col}")
+            return
+
+    # pegar ORs
+    ors = df["OR"].unique()
+
+    print(f"\n🔢 Total de ORs encontradas: {len(ors)}\n")
+
+    for or_num in ors:
+
+        print(f"\n🧾 OR: {or_num}")
+
+        dados_or = df[df["OR"] == or_num]
+
+        depositante = dados_or.iloc[0]["DEPOSITANTE"]
+
+        print(f"🏢 Depositante (ID): {depositante}")
+
+        print("📦 Itens:")
+
+        for _, linha in dados_or.iterrows():
+
+            produto = linha["CODIGO DO PRODUTO"]
+            quantidade = linha["QUANTIDADE"]
+
+            print(f"   ➤ Produto: {produto} | Quantidade: {quantidade}")
+
+        print("-" * 40)
+
+
+if __name__ == "__main__":
+    testar_leitura()
