@@ -32,7 +32,9 @@ Em desenvolvimento
 
 Atualmente:
 - Leitura de dados da planilha concluída  
-- Integração com sistema web em progresso  
+- Integração com sistema web em progresso
+- Interpretação do tamanho das ORs concluída
+- Contagem de Itens e Certificação de IDs concluída  
 - Automação completa ainda em implementação  
 
 ---
