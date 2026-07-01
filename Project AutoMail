@@ -1,0 +1,978 @@
+import pandas as pd
+import time
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
+
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+
+# =========================
+# CONFIG
+# =========================
+CAMINHO_PLANILHA = r"C:\Users\usuario\Desktop\ORs à Digitar\IDs e ORs à Digitar.xlsx"
+
+URL = "URL"
+USUARIO = "USUARIO"
+SENHA = "SENHA"
+
+
+# =========================
+# EXCEL
+# =========================
+print("📊 Lendo planilha...")
+
+df = pd.read_excel(
+    CAMINHO_PLANILHA,
+    sheet_name="ORs para Digitar"
+)
+
+ids_df = pd.read_excel(
+    CAMINHO_PLANILHA,
+    sheet_name="IDs e Depositantes"
+)
+
+df.columns = df.columns.str.strip().str.upper()
+ids_df.columns = ids_df.columns.str.strip().str.upper()
+
+df["DEPOSITANTE"] = (
+    df["DEPOSITANTE"]
+    .astype(str)
+    .str.strip()
+    .str.upper()
+)
+
+ids_df["DEPOSITANTE"] = (
+    ids_df["DEPOSITANTE"]
+    .astype(str)
+    .str.strip()
+    .str.upper()
+)
+
+mapa_ids = dict(zip(
+    ids_df["DEPOSITANTE"],
+    ids_df["ID"]
+))
+
+print("✔ Planilha carregada")
+
+print("\n🔎 MAPA IDS:")
+print(mapa_ids)
+
+
+# =========================
+# DRIVER
+# =========================
+options = webdriver.ChromeOptions()
+options.add_argument("--start-maximized")
+
+driver = webdriver.Chrome(options=options)
+wait = WebDriverWait(driver, 10)
+
+
+# =========================
+# FUNÇÕES
+# =========================
+def clicar(el):
+
+    ActionChains(driver)\
+        .move_to_element(el)\
+        .pause(0.2)\
+        .click()\
+        .perform()
+
+
+# =========================
+# VALIDAR LOOKUP
+# =========================
+def validar_lookup(label, texto_esperado):
+
+    campo = wait.until(
+        EC.presence_of_element_located((
+            By.XPATH,
+            f"//label[contains(text(),'{label}')]/ancestor::div[contains(@class,'x-form-item')]//input"
+        ))
+    )
+
+    time.sleep(1)
+
+    valor_tela = (
+        campo.get_attribute("value")
+        .strip()
+        .upper()
+    )
+
+    texto_esperado = str(texto_esperado).strip().upper()
+
+    print(f"🔎 Validando {label}: [{valor_tela}]")
+
+    if texto_esperado not in valor_tela:
+
+        raise Exception(
+            f"{label} NÃO foi preenchido corretamente. "
+            f"Esperado conter: {texto_esperado} | Tela: {valor_tela}"
+        )
+
+    print(f"✔ {label} validado")
+
+
+# =========================
+# LOOKUP
+# =========================
+def preencher_lookup_por_label(label, valor, nome_validacao):
+
+    print(f"🔎 {label}...")
+
+    for tentativa in range(3):
+
+        try:
+
+            # localiza o campo novamente
+            campo = wait.until(
+                EC.presence_of_element_located((
+                    By.XPATH,
+                    f"//label[contains(text(),'{label}')]/ancestor::div[contains(@class,'x-form-item')]//input"
+                ))
+            )
+
+            # localiza a lupa novamente
+            lupa = campo.find_element(
+                By.XPATH,
+                ".//following::img[contains(@class,'x-form-search-trigger')][1]"
+            )
+
+            clicar(lupa)
+
+            campo_busca = wait.until(
+                EC.element_to_be_clickable((
+                    By.CSS_SELECTOR,
+                    "#SearchTriggerWindowRemote_searchTextField"
+                ))
+            )
+
+            campo_busca.click()
+            campo_busca.clear()
+
+            campo_busca.send_keys(str(valor))
+
+            time.sleep(1)
+
+            # garante foco
+            driver.execute_script(
+                "arguments[0].focus();",
+                campo_busca
+            )
+
+            time.sleep(1)
+
+            campo_busca.send_keys(Keys.ENTER)
+
+            print("✔ Enter enviado")
+
+            # espera a grade atualizar
+            time.sleep(3)
+
+            # pega SEMPRE o primeiro resultado
+            primeiro_item = wait.until(
+                EC.element_to_be_clickable((
+                    By.XPATH,
+                    "(//div[contains(@class,'x-grid3-cell-inner')])[1]"
+                ))
+            )
+
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block:'center'});",
+                primeiro_item
+            )
+
+            time.sleep(1)
+
+            clicar(primeiro_item)
+
+            btn_select = wait.until(
+                EC.element_to_be_clickable((
+                    By.CSS_SELECTOR,
+                    "#SearchTriggerWindowRemote_selectButton"
+                ))
+            )
+
+            clicar(btn_select)
+
+            time.sleep(2)
+
+            validar_lookup(
+                label,
+                nome_validacao
+            )
+
+            print(f"✔ {label} OK")
+
+            return
+
+        except Exception as e:
+
+            print(f"⚠ Retry {label}: {e}")
+
+            try:
+                driver.find_element(
+                    By.TAG_NAME,
+                    "body"
+                ).send_keys(Keys.ESCAPE)
+            except:
+                pass
+
+            time.sleep(2)
+
+    raise Exception(
+        f"Falha ao selecionar {label}"
+    )
+
+# =========================
+# OPERAÇÃO
+# =========================
+def selecionar_operacao():
+
+    print("🔎 Operação...")
+
+    driver.execute_script(
+        "window.scrollBy(0, 800);"
+    )
+
+    time.sleep(1)
+
+    lupa = wait.until(
+        EC.element_to_be_clickable((
+            By.XPATH,
+            "(//fieldset)[3]//img[contains(@class,'x-form-search-trigger')]"
+        ))
+    )
+
+    clicar(lupa)
+
+    campo_busca = wait.until(
+        EC.visibility_of_element_located((
+            By.CSS_SELECTOR,
+            "#SearchTriggerWindowRemote_searchTextField"
+        ))
+    )
+
+    campo_busca.click()
+
+    time.sleep(2)
+
+    campo_busca.clear()
+
+    campo_busca.send_keys("5101")
+
+    campo_busca.send_keys(Keys.ENTER)
+
+    print("✔ Enter enviado corretamente")
+
+    item = wait.until(
+        EC.element_to_be_clickable((
+            By.XPATH,
+            "//div[contains(@class,'x-grid3-col-CFOP') and text()='5101']"
+        ))
+    )
+
+    clicar(item)
+
+    btn = wait.until(
+        EC.element_to_be_clickable((
+            By.CSS_SELECTOR,
+            "#SearchTriggerWindowRemote_selectButton"
+        ))
+    )
+
+    clicar(btn)
+
+    print("✔ Operação OK")
+
+
+# =========================
+# TRANSPORTADORA
+# =========================
+def preencher_transportadora():
+
+    print("🔎 Transportadora...")
+
+        # procura pela lupa baseada no label
+    lupa = wait.until(
+        EC.element_to_be_clickable((
+            By.XPATH,
+            "/html/body/div[12]/div[2]/div[1]/div/div/div/div[2]/div[2]/div[1]/div[2]/div[2]/div[1]/form/div/div/div[2]/div[1]/div[1]/div/img"
+        ))
+    )
+
+    clicar(lupa)
+
+    campo_busca = wait.until(
+        EC.element_to_be_clickable((
+            By.CSS_SELECTOR,
+            "#SearchTriggerWindowRemote_searchTextField"
+        ))
+    )
+
+    time.sleep(2)
+
+    # abre combo
+    combo_arrow = wait.until(
+        EC.element_to_be_clickable((
+            By.CSS_SELECTOR,
+            "#SearchTriggerWindowRemote_searchComboBoxComboArrow"
+        ))
+    )
+
+    time.sleep(2)
+
+    clicar(combo_arrow)
+
+    identidade = wait.until(
+        EC.element_to_be_clickable((
+            By.XPATH,
+            "//div[contains(@class,'x-combo-list-item') "
+            "and normalize-space()='Identidade']"
+        ))
+    )
+
+    clicar(identidade)
+
+    campo_busca.clear()
+    campo_busca.send_keys("16")
+
+    time.sleep(2)
+
+    campo_busca.send_keys(Keys.ENTER)
+
+    print("✔ Pesquisa enviada")
+
+    item = wait.until(
+        EC.element_to_be_clickable((
+            By.XPATH,
+            "(//div[contains(@class,'x-grid3-cell-inner')])[1]"
+        ))
+    )
+
+    clicar(item)
+
+    btn_select = wait.until(
+        EC.element_to_be_clickable((
+            By.CSS_SELECTOR,
+            "#SearchTriggerWindowRemote_selectButton"
+        ))
+    )
+
+    clicar(btn_select)
+
+    print("✔ Transportadora OK")
+
+
+# =========================
+# ITENS
+# =========================
+def preencher_itens(dados_or):
+
+    print("📦 Preenchendo itens...")
+
+    aba_itens = wait.until(
+        EC.element_to_be_clickable((
+            By.XPATH,
+            "//span[contains(text(),'Itens')]"
+        ))
+    )
+
+    clicar(aba_itens)
+
+    time.sleep(2)
+
+    for _, linha in dados_or.iterrows():
+
+        produto = str(
+            linha["CÓDIGO DO PRODUTO"]
+        ).strip()
+
+        quantidade = str(
+            linha["QUANTIDADE"]
+        ).strip()
+
+        print(f"➡ Produto: {produto} | Qtd: {quantidade}")
+
+        # =========================
+        # ADICIONAR ITEM
+        # =========================
+        btn_add = wait.until(
+            EC.element_to_be_clickable((
+                By.ID,
+                "tb-Adicionar"
+            ))
+        )
+
+        clicar(btn_add)
+
+        time.sleep(2)
+
+        # =========================
+        # PRODUTO
+        # =========================
+        lupa_produto = wait.until(
+            EC.element_to_be_clickable((
+                By.XPATH,
+                "//label[contains(text(),'Produto')]/ancestor::div[contains(@class,'x-form-item')]//img[contains(@class,'x-form-search-trigger')]"
+            ))
+        )
+
+        clicar(lupa_produto)
+
+        campo_busca = wait.until(
+            EC.element_to_be_clickable((
+                By.CSS_SELECTOR,
+                "#SearchTriggerWindowRemote_searchTextField"
+            ))
+        )
+
+        campo_busca.click()
+        campo_busca.clear()
+        campo_busca.send_keys(produto)
+
+        time.sleep(1.5)
+
+        campo_busca.send_keys(Keys.ENTER)
+
+        time.sleep(2)
+
+        item = wait.until(
+            EC.element_to_be_clickable((
+                By.XPATH,
+                f"(//div[contains(@class,'x-grid3-cell-inner') and text()='{produto}'])[1]"
+            ))
+        )
+
+        clicar(item)
+
+        btn_select = wait.until(
+            EC.element_to_be_clickable((
+                By.CSS_SELECTOR,
+                "#SearchTriggerWindowRemote_selectButton"
+            ))
+        )
+
+        clicar(btn_select)
+
+        # =========================
+        # QUANTIDADE
+        # =========================
+        campo_qtd = wait.until(
+            EC.element_to_be_clickable((
+                By.CSS_SELECTOR,
+                "#SDItemNotaFiscalDadosItemNF_qtde"
+            ))
+        )
+
+        campo_qtd.clear()
+        campo_qtd.send_keys(quantidade)
+
+        campo_total = wait.until(
+            EC.element_to_be_clickable((
+                By.CSS_SELECTOR,
+                "#SDItemNotaFiscalDadosItemNF_total"
+            ))
+        )
+
+        campo_total.clear()
+        campo_total.send_keys(quantidade)
+
+        print("✔ Quantidade OK")
+
+        # =========================
+        # EMBALAGEM
+        # =========================
+        print("🔎 Selecionando embalagem...")
+
+        lupa_emb = wait.until(
+            EC.element_to_be_clickable((
+                By.XPATH,
+                "(//img[contains(@class,'x-form-search-trigger')])[last()]"
+            ))
+        )
+
+        clicar(lupa_emb)
+
+        time.sleep(1.5)
+
+        combo_arrow = wait.until(
+            EC.element_to_be_clickable((
+                By.CSS_SELECTOR,
+                "#SearchTriggerWindowRemote_searchComboBoxComboArrow"
+            ))
+        )
+
+        clicar(combo_arrow)
+
+        time.sleep(2)
+
+        # pega todas as opções visíveis
+        opcoes = driver.find_elements(
+            By.XPATH,
+            "//div[contains(@class,'x-combo-list-item')]"
+        )
+
+        opcoes_visiveis = []
+
+        for opcao in opcoes:
+            try:
+                if opcao.is_displayed():
+                    opcoes_visiveis.append(opcao)
+                    print(
+                        f"{len(opcoes_visiveis)} -> {opcao.text}"
+                    )
+            except:
+                pass
+
+        # pega a terceira opção
+        if len(opcoes_visiveis) < 3:
+            raise Exception(
+                f"Só encontrou {len(opcoes_visiveis)} opções"
+            )
+
+        terceira = opcoes_visiveis[2]
+
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block:'center'});",
+            terceira
+        )
+
+        time.sleep(1)
+
+        ActionChains(driver)\
+            .move_to_element(terceira)\
+            .pause(0.5)\
+            .click()\
+            .perform()
+
+        time.sleep(1)
+
+        combo = driver.find_element(
+            By.CSS_SELECTOR,
+            "#SearchTriggerWindowRemote_searchComboBox"
+        )
+
+        valor_combo = combo.get_attribute("value")
+
+        print(
+            "Filtro atual:",
+            valor_combo
+        )
+
+        if "Fator" not in valor_combo:
+            raise Exception(
+                "Fator de Conversão não foi aplicado"
+            )
+
+        print("✔ Fator aplicado")
+
+        time.sleep(1.5)
+
+        campo_busca = wait.until(
+            EC.element_to_be_clickable((
+                By.CSS_SELECTOR,
+                "#SearchTriggerWindowRemote_searchTextField"
+            ))
+        )
+
+        campo_busca.click()
+        campo_busca.clear()
+
+        campo_busca.send_keys("1")
+        campo_busca.send_keys(Keys.ENTER)
+
+        print("✔ Pesquisa enviada")
+
+        time.sleep(1.5)
+
+        # pega a primeira célula preenchida da grade
+        primeira_opcao = wait.until(
+            EC.presence_of_element_located((
+                By.XPATH,
+                "(//div[contains(@class,'x-grid3-cell-inner') "
+                "and normalize-space()!=''])[1]"
+            ))
+        )
+
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block:'center'});",
+            primeira_opcao
+        )
+
+        time.sleep(1)
+
+        # clique JS + ActionChains (ExtJS às vezes ignora um deles)
+        driver.execute_script(
+            "arguments[0].click();",
+            primeira_opcao
+        )
+
+        time.sleep(1)
+
+        ActionChains(driver)\
+            .move_to_element(primeira_opcao)\
+            .pause(0.5)\
+            .click()\
+            .perform()
+
+        print("✔ Primeira opção selecionada")
+
+        time.sleep(2)
+
+        btn_select = wait.until(
+            EC.element_to_be_clickable((
+                By.CSS_SELECTOR,
+                "#SearchTriggerWindowRemote_selectButton"
+            ))
+        )
+
+        clicar(btn_select)
+
+        print("✔ Embalagem OK")
+
+        time.sleep(1)
+
+        btn_select = wait.until(
+            EC.element_to_be_clickable((
+                By.CSS_SELECTOR,
+                "#SearchTriggerWindowRemote_selectButton"
+            ))
+        )
+
+        clicar(btn_select)
+
+        print("✔ Embalagem OK")
+
+        # =========================
+        # IMPOSTOS
+        # =========================
+        print("🔎 Abrindo aba Impostos...")
+
+        aba_impostos = wait.until(
+            EC.element_to_be_clickable((
+                By.XPATH,
+                "//span[normalize-space()='Impostos']"
+            ))
+        )
+
+        driver.execute_script("""
+            arguments[0].scrollIntoView({
+                block:'center'
+            });
+        """, aba_impostos)
+
+        time.sleep(1)
+
+        clicar(aba_impostos)
+
+        print("✔ Aba Impostos aberta")
+
+        # espera o campo REALMENTE ficar utilizável
+        campo_origem = wait.until(
+            EC.element_to_be_clickable((
+                By.CSS_SELECTOR,
+                "#SDItemNotaFiscalDadosImpostos_origemProduto"
+            ))
+        )
+
+        time.sleep(1)
+
+        driver.execute_script("""
+            arguments[0].scrollIntoView({
+                block:'center'
+            });
+        """, campo_origem)
+
+        time.sleep(0.5)
+
+        # limpa via JS
+        driver.execute_script(
+            "arguments[0].value='';",
+            campo_origem
+        )
+
+        # força clique
+        driver.execute_script(
+            "arguments[0].click();",
+            campo_origem
+        )
+
+        time.sleep(0.5)
+
+        campo_origem.send_keys(Keys.CONTROL, "a")
+        campo_origem.send_keys(Keys.DELETE)
+
+        time.sleep(0.3)
+
+        campo_origem.send_keys("0")
+
+        print("✔ Impostos OK")
+
+        # =========================
+        # SALVAR ITEM
+        # =========================
+        btn_salvar = wait.until(
+            EC.element_to_be_clickable((
+                By.CSS_SELECTOR,
+                "#CadastroWindow_salvarItemdaNotaFiscalButton"
+            ))
+        )
+
+        clicar(btn_salvar)
+
+        print("✔ Item salvo")
+
+        time.sleep(2)
+
+
+# =========================
+# LOGIN
+# =========================
+print("🔐 Login...")
+
+driver.get(URL)
+
+wait.until(
+    EC.visibility_of_element_located((
+        By.ID,
+        "LoginDialog_loginText"
+    ))
+).send_keys(USUARIO)
+
+wait.until(
+    EC.visibility_of_element_located((
+        By.ID,
+        "LoginDialog_passwordText"
+    ))
+).send_keys(SENHA)
+
+wait.until(
+    EC.element_to_be_clickable((
+        By.ID,
+        "LoginDialog_armazemComboBox"
+    ))
+).click()
+
+time.sleep(1)
+
+wait.until(
+    EC.element_to_be_clickable((
+        By.XPATH,
+        "//*[contains(text(),'CAJAMAR')]"
+    ))
+).click()
+
+wait.until(
+    EC.element_to_be_clickable((
+        By.ID,
+        "LoginDialog_loginButton"
+    ))
+).click()
+
+print("✔ Login feito")
+
+time.sleep(5)
+
+
+# =========================
+# MENU
+# =========================
+print("📂 Buscando Controle Nota Fiscal...")
+
+campo_busca = wait.until(
+    EC.element_to_be_clickable((
+        By.XPATH,
+        "//div[contains(@id,'NavigationView_filter')]//input"
+    ))
+)
+
+campo_busca.click()
+campo_busca.clear()
+campo_busca.send_keys("Controle Nota Fiscal")
+
+time.sleep(1.5)
+
+itens = driver.find_elements(
+    By.XPATH,
+    "//span[@class='x-tree3-node-text']"
+)
+
+for el in itens:
+
+    if el.text.strip() == "Controle Nota Fiscal":
+
+        clicar(el)
+
+        print("✅ Menu clicado")
+
+        break
+
+
+wait.until(
+    EC.presence_of_element_located((
+        By.CSS_SELECTOR,
+        "#tb-Controle-Cadastrar"
+    ))
+)
+
+print("✔ Tela carregada")
+
+
+# =========================
+# LOOP OR
+# =========================
+for or_num in df["OR"].dropna().unique():
+
+    print(f"\n🚀 OR {or_num}")
+
+    try:
+
+        nf = str(or_num)
+
+        btn = wait.until(
+            EC.element_to_be_clickable((
+                By.CSS_SELECTOR,
+                "#tb-Controle-Cadastrar"
+            ))
+        )
+
+        clicar(btn)
+
+        campo_nf = wait.until(
+            EC.visibility_of_element_located((
+                By.CSS_SELECTOR,
+                "#SDNotaFiscalDadosNF_numero"
+            ))
+        )
+
+        campo_nf.click()
+        campo_nf.clear()
+        campo_nf.send_keys(nf)
+
+        campo_chave = wait.until(
+            EC.visibility_of_element_located((
+                By.CSS_SELECTOR,
+                "#SDNotaFiscalDadosNF_chaveacessonfe"
+            ))
+        )
+
+        campo_chave.click()
+        campo_chave.clear()
+        campo_chave.send_keys(nf)
+
+        print("✔ NF + Chave OK")
+
+        selecionar_operacao()
+
+        aba_emit = wait.until(
+            EC.element_to_be_clickable((
+                By.XPATH,
+                "//span[contains(text(),'Emitente e Destinatário')]"
+            ))
+        )
+
+        clicar(aba_emit)
+
+        dados_or = df[df["OR"] == or_num]
+
+        nome_dep = (
+            str(dados_or.iloc[0]["DEPOSITANTE"])
+            .strip()
+            .upper()
+        )
+
+        depositante_id = None
+
+        if nome_dep in mapa_ids:
+
+            depositante_id = mapa_ids[nome_dep]
+
+        else:
+
+            for nome_mapa, id_mapa in mapa_ids.items():
+
+                if (
+                    nome_dep in nome_mapa
+                    or nome_mapa in nome_dep
+                ):
+
+                    depositante_id = id_mapa
+                    break
+
+        if depositante_id is None:
+
+            raise Exception(
+                f"Depositante '{nome_dep}' não encontrado"
+            )
+
+        # =========================
+        # LOOKUPS
+        # =========================
+        preencher_lookup_por_label(
+            "Depositante",
+            depositante_id,
+            nome_dep
+        )
+
+        time.sleep(0.5)
+
+        preencher_lookup_por_label(
+            "Destinatário",
+            depositante_id,
+            nome_dep
+        )
+
+        time.sleep(0.5)
+
+        preencher_lookup_por_label(
+            "Emitente",
+            depositante_id,
+            nome_dep
+        )
+
+        time.sleep(0.5)
+
+        preencher_lookup_por_label(
+            "Entrega",
+            depositante_id,
+            nome_dep
+        )
+
+        # =========================
+        # TRANSPORTE
+        # =========================
+        aba_transporte = wait.until(
+            EC.element_to_be_clickable((
+                By.XPATH,
+                "//span[contains(text(),'Transporte')]"
+            ))
+        )
+
+        clicar(aba_transporte)
+
+        time.sleep(1.5)
+
+        preencher_transportadora()
+
+        # =========================
+        # ITENS
+        # =========================
+        preencher_itens(dados_or)
+
+        print(f"🎉 OR {or_num} FINALIZADA")
+
+    except Exception as e:
+
+        print(f"❌ erro OR {or_num}: {e}")
+
+
+input("\nENTER para sair...")
+
+driver.quit()
